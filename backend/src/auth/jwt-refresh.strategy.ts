@@ -4,6 +4,7 @@ import { ExtractJwt, Strategy } from "passport-jwt";
 import { ConfigService } from "@nestjs/config";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model } from "mongoose";
+import { Request } from "express";
 import { User, UserDocument } from "../user/schemas/user.schema";
 import { JwtPayload } from "./jwt.strategy";
 
@@ -17,7 +18,12 @@ export class JwtRefreshStrategy extends PassportStrategy(
     @InjectModel(User.name) private userModel: Model<UserDocument>
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromBodyField("refreshToken"),
+      //  Extract refresh token from cookies
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (request: Request) => {
+          return request?.cookies?.refreshToken;
+        },
+      ]),
       ignoreExpiration: false,
       secretOrKey:
         configService.get<string>("JWT_REFRESH_SECRET") ||
@@ -26,12 +32,12 @@ export class JwtRefreshStrategy extends PassportStrategy(
     });
   }
 
-  async validate(req: any, payload: JwtPayload) {
+  async validate(req: Request, payload: JwtPayload) {
     if (payload.type !== "refresh") {
       throw new UnauthorizedException("Invalid token type");
     }
 
-    const refreshToken = req.body?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken;
     if (!refreshToken) {
       throw new UnauthorizedException("Refresh token not provided");
     }
@@ -41,15 +47,13 @@ export class JwtRefreshStrategy extends PassportStrategy(
       throw new UnauthorizedException("User not found");
     }
 
-    // Verify the refresh token exists in the user's stored tokens
-    if (!user.refreshTokens.includes(refreshToken)) {
-      throw new UnauthorizedException("Invalid refresh token");
-    }
+    //  No need to check tokens in database (stateless JWT)
+    // Token validation is done by JWT signature verification
 
     return {
       userId: payload.sub,
       email: payload.email,
-      refreshToken,
+      refreshToken, // Pass refresh token to controller for cookie update
     };
   }
 }

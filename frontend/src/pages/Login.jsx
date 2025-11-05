@@ -33,10 +33,13 @@ function Login() {
       console.log("Login successful:", data);
       setLoginSuccess(true);
 
-      // Store tokens using AuthContext
-      await login(data.accessToken, data.refreshToken, {
-        email: data.user.email,
-      });
+      //  Store accessToken in memory, refreshToken in cookie (set by backend)
+      await login(
+        {
+          email: data.user.email,
+        },
+        data.accessToken
+      );
 
       reset();
 

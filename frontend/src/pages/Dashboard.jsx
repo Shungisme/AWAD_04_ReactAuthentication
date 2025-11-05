@@ -5,7 +5,7 @@ import { getUserProfile, logoutUser } from "../services/api";
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { user, logout, getRefreshToken } = useAuth();
+  const { user, logout } = useAuth();
 
   // Fetch user profile data
   const {
@@ -20,13 +20,12 @@ function Dashboard() {
 
   const handleLogout = async () => {
     try {
-      const refreshToken = getRefreshToken();
-      if (refreshToken) {
-        await logoutUser(refreshToken);
-      }
+      //  Call logout endpoint (backend will clear cookies)
+      await logoutUser();
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
+      // Update auth state
       logout();
       navigate("/login");
     }

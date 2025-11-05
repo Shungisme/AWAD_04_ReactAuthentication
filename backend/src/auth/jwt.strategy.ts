@@ -4,6 +4,7 @@ import { ExtractJwt, Strategy } from "passport-jwt";
 import { ConfigService } from "@nestjs/config";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model } from "mongoose";
+import { Request } from "express";
 import { User, UserDocument } from "../user/schemas/user.schema";
 
 export interface JwtPayload {
@@ -19,6 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
     @InjectModel(User.name) private userModel: Model<UserDocument>
   ) {
     super({
+      //  Extract JWT from Authorization header (Bearer token)
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey:

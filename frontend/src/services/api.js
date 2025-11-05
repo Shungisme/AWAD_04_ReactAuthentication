@@ -8,6 +8,7 @@ export const api = axios.create({
 	headers: {
 		'Content-Type': 'application/json',
 	},
+	withCredentials: true, //  Send cookies (refreshToken) with every request
 });
 
 // Store for auth callbacks
@@ -18,11 +19,13 @@ export const setAuthContext = (context) => {
 	authContext = context;
 };
 
-// Request interceptor to attach access token
+//  Request interceptor to attach access token from memory
 api.interceptors.request.use(
 	(config) => {
-		if (authContext?.accessToken) {
-			config.headers.Authorization = `Bearer ${authContext.accessToken}`;
+		// Get access token from memory (AuthContext)
+		const token = authContext?.accessToken;
+		if (token) {
+			config.headers.Authorization = `Bearer ${token}`;
 		}
 		return config;
 	},
@@ -33,12 +36,12 @@ api.interceptors.request.use(
 let isRefreshing = false;
 let failedQueue = [];
 
-const processQueue = (error, token = null) => {
+const processQueue = (error) => {
 	failedQueue.forEach((prom) => {
 		if (error) {
 			prom.reject(error);
 		} else {
-			prom.resolve(token);
+			prom.resolve();
 		}
 	});
 	failedQueue = [];
@@ -59,51 +62,33 @@ api.interceptors.response.use(
 			return new Promise((resolve, reject) => {
 				failedQueue.push({ resolve, reject });
 			})
-				.then((token) => {
-					originalRequest.headers.Authorization = `Bearer ${token}`;
-					return api(originalRequest);
-				})
+				.then(() => api(originalRequest))
 				.catch((err) => Promise.reject(err));
 		}
 
 		originalRequest._retry = true;
 		isRefreshing = true;
 
-		const refreshToken = authContext?.getRefreshToken();
-
-		if (!refreshToken) {
-			// No refresh token, logout
-			isRefreshing = false;
-			authContext?.logout();
-			return Promise.reject(error);
-		}
-
 		try {
-			// Call refresh endpoint
-			const response = await axios.post(`${API_URL}/user/refresh`, {
-				refreshToken,
-			});
+			//  Call refresh endpoint (refreshToken sent via cookie automatically)
+			const response = await api.post('/user/refresh');
 
-			const { accessToken, refreshToken: newRefreshToken } = response.data;
-
-			// Update tokens in auth context
-			authContext?.updateAccessToken(accessToken);
-			localStorage.setItem('refreshToken', newRefreshToken);
-
-			// Update authorization header
-			api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-			originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+			//  Update access token in memory from response
+			const newAccessToken = response.data.accessToken;
+			if (authContext?.setAccessToken) {
+				authContext.setAccessToken(newAccessToken);
+			}
 
 			// Process queued requests
-			processQueue(null, accessToken);
+			processQueue(null);
 
 			isRefreshing = false;
 
-			// Retry original request
+			// Retry original request (with new access token)
 			return api(originalRequest);
 		} catch (refreshError) {
-			// Refresh failed, logout user
-			processQueue(refreshError, null);
+			// Refresh failed (refresh token expired), logout user
+			processQueue(refreshError);
 			isRefreshing = false;
 			authContext?.logout();
 			return Promise.reject(refreshError);
@@ -122,8 +107,9 @@ export const loginUser = async (userData) => {
 	return response.data;
 };
 
-export const logoutUser = async (refreshToken) => {
-	const response = await api.post('/user/logout', { refreshToken });
+export const logoutUser = async () => {
+	//  Access token sent via Authorization header, refreshToken via cookie
+	const response = await api.post('/user/logout');
 	return response.data;
 };
 

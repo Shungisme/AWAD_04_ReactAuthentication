@@ -47,7 +47,6 @@ export class UserService {
         email,
         password: hashedPassword,
         createdAt: new Date(),
-        refreshTokens: [],
       });
 
       const savedUser = await newUser.save();
@@ -99,8 +98,6 @@ export class UserService {
       // Generate tokens
       const tokens = await this.generateTokens(user._id.toString(), user.email);
 
-      // Store refresh token
-      await this.storeRefreshToken(user._id.toString(), tokens.refreshToken);
 
       return {
         message: "Login successful",
@@ -128,20 +125,10 @@ export class UserService {
         throw new UnauthorizedException("User not found");
       }
 
-      // Verify the refresh token is in the user's stored tokens
-      if (!user.refreshTokens.includes(refreshToken)) {
-        throw new UnauthorizedException("Invalid refresh token");
-      }
-
-      // Remove old refresh token
-      await this.removeRefreshToken(userId, refreshToken);
 
       // Generate new tokens
       const tokens = await this.generateTokens(userId, user.email);
-
-      // Store new refresh token
-      await this.storeRefreshToken(userId, tokens.refreshToken);
-
+ 
       return tokens;
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -155,14 +142,9 @@ export class UserService {
 
   async logout(
     userId: string,
-    refreshToken: string
+    refreshToken?: string
   ): Promise<{ message: string }> {
-    try {
-      await this.removeRefreshToken(userId, refreshToken);
-      return { message: "Logout successful" };
-    } catch (error) {
-      throw new InternalServerErrorException("An error occurred during logout");
-    }
+    return { message: "Logout successful" };
   }
 
   async getProfile(
@@ -224,29 +206,4 @@ export class UserService {
     return { accessToken, refreshToken };
   }
 
-  private async storeRefreshToken(
-    userId: string,
-    refreshToken: string
-  ): Promise<void> {
-    await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        { $push: { refreshTokens: refreshToken } },
-        { new: true }
-      )
-      .exec();
-  }
-
-  private async removeRefreshToken(
-    userId: string,
-    refreshToken: string
-  ): Promise<void> {
-    await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        { $pull: { refreshTokens: refreshToken } },
-        { new: true }
-      )
-      .exec();
-  }
 }
