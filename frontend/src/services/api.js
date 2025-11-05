@@ -36,12 +36,12 @@ api.interceptors.request.use(
 let isRefreshing = false;
 let failedQueue = [];
 
-const processQueue = (error) => {
+const processQueue = (error, token = null) => {
 	failedQueue.forEach((prom) => {
 		if (error) {
 			prom.reject(error);
 		} else {
-			prom.resolve();
+			prom.resolve(token);
 		}
 	});
 	failedQueue = [];
@@ -62,7 +62,11 @@ api.interceptors.response.use(
 			return new Promise((resolve, reject) => {
 				failedQueue.push({ resolve, reject });
 			})
-				.then(() => api(originalRequest))
+				.then((token) => {
+					// Attach token to queued request before retrying
+					originalRequest.headers.Authorization = `Bearer ${token}`;
+					return api(originalRequest);
+				})
 				.catch((err) => Promise.reject(err));
 		}
 
@@ -79,12 +83,16 @@ api.interceptors.response.use(
 				authContext.setAccessToken(newAccessToken);
 			}
 
-			// Process queued requests
-			processQueue(null);
+			// Manually attach new token to original request before retrying
+			// This ensures the retry has the token regardless of state update timing
+			originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+			// Process queued requests with new token
+			processQueue(null, newAccessToken);
 
 			isRefreshing = false;
 
-			// Retry original request (with new access token)
+			// Retry original request (with new access token in header)
 			return api(originalRequest);
 		} catch (refreshError) {
 			// Refresh failed (refresh token expired), logout user
